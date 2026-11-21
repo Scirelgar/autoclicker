@@ -2,8 +2,6 @@
 
 A small Windows desktop app that repeats left clicks at the mouse pointer using
 two configurable global shortcuts. It uses Tkinter and the Windows input APIs.
-The [Quantum ÉTS Python template](https://github.com/QuantumETS/template-python-with-ci)
-provides the uv, pytest, Ruff, and GitHub Actions setup.
 
 ## Run
 
