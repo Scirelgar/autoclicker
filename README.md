@@ -13,9 +13,11 @@ uv run python src/main.py
 
 The project uses Python 3.14 or newer with Tkinter.
 
-1. Enter the activation and failsafe shortcuts, for example `Ctrl+Alt+F8` and
-   `Ctrl+Alt+F9`. Use one or more of Ctrl, Alt, or Shift with a letter, digit,
-   F1–F11, or Esc. Both shortcuts must be different and available in Windows.
+1. Click **Record** beside each shortcut and press the desired combination, for
+   example `Ctrl+Alt+F8` for activation and `Ctrl+Alt+F9` for failsafe. Use one
+   or more of Ctrl, Alt, or Shift with a letter, top-row digit, F1–F11, or Esc.
+   Press Esc on its own or click **Cancel** to keep the current shortcut.
+   Both shortcuts must be different and available in Windows.
 2. Enter a whole interval from 10 to 2,147,483,647 milliseconds and click **Arm**.
 3. Move the pointer where you want to click. Press the activation shortcut to
    start clicking. Press it again to pause. Shortcuts work while another app

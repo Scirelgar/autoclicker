@@ -13,6 +13,14 @@ _PM_REMOVE = 0x0001
 _LEFT_DOWN = 0x0002
 _LEFT_UP = 0x0004
 _ERROR_NOT_ENOUGH_QUOTA = 1816
+_WINDOWS_KEYS = (0x5B, 0x5C)  # VK_LWIN, VK_RWIN
+
+
+def windows_key_pressed() -> bool:
+    """Check for a Windows modifier on the GUI thread during a key event."""
+    get_key_state = ctypes.windll.user32.GetKeyState
+    get_key_state.restype = ctypes.c_short
+    return any(get_key_state(key) & 0x8000 for key in _WINDOWS_KEYS)
 
 
 class InputMessage(IntEnum):

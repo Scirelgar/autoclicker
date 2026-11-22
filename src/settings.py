@@ -18,6 +18,7 @@ _KEYS = (
     | {f"F{number}": 0x6F + number for number in range(1, 12)}
     | {"ESC": 0x1B}
 )
+_KEY_NAMES = {code: name for name, code in _KEYS.items()}
 
 
 @dataclass(frozen=True)
@@ -36,9 +37,18 @@ class Settings:
 
 def _parse_hotkey(value: object, field: str) -> Hotkey:
     if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"Enter a {field} shortcut.")
+        raise ValueError(f"Record the {field} shortcut.")
 
     *modifiers, key = [part.strip().upper() for part in value.split("+")]
+    return _validate_hotkey(modifiers, key, field)
+
+
+def hotkey_from_keypress(key_code: int, modifiers: list[str], field: str) -> Hotkey:
+    """Normalize a Windows virtual key and its recorded modifier names."""
+    return _validate_hotkey(modifiers, _KEY_NAMES.get(key_code, ""), field)
+
+
+def _validate_hotkey(modifiers: list[str], key: str, field: str) -> Hotkey:
     unique_modifiers = set(modifiers)
     if (
         not modifiers
