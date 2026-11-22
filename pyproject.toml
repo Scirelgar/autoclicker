@@ -1,17 +1,17 @@
+[build-system]
+requires = ["setuptools>=80", "setuptools-scm[simple]>=9.2"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "autoclicker"
-version = "0.1.0"
+dynamic = ["version"]
 description = "A Windows autoclicker with configurable global shortcuts"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = []
 
 [dependency-groups]
-dev = [
-    "build>=1.6.1",
-    "pytest>=9.0.3",
-    "ruff>=0.15.13",
-]
+dev = ["build>=1.6.1", "pytest>=9.0.3", "ruff>=0.15.13"]
 
 [tool.pytest]
 pythonpath = ["src"]
