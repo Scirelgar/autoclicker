@@ -12,6 +12,7 @@ from windows_input import InputMessage, WindowsInput
 
 _FAILSAFE_ID = 1
 _ACTIVATION_ID = 2
+_FOCUS_LOST_NOTICE = "Target window lost focus."
 
 
 class State(Enum):
@@ -28,7 +29,7 @@ class SessionUpdate:
 
 
 class ClickSession(Thread):
-    """Own the native shortcuts and timer until stopped or disarmed."""
+    """Own the shortcuts, focus watch, and timer until disarmed."""
 
     def __init__(self, settings: Settings, backend: WindowsInput) -> None:
         super().__init__(name="Autoclicker input")
@@ -39,6 +40,7 @@ class ClickSession(Thread):
         self._thread_lock = Lock()
         self._thread_id: int | None = None
         self._timer_id: int | None = None
+        self._target_window: int | None = None
 
     def request_stop(self) -> None:
         """Signal a stop even if the worker is still starting."""
@@ -84,7 +86,7 @@ class ClickSession(Thread):
             try:
                 return self._listen()
             finally:
-                self._stop_timer()
+                self._stop_clicking()
 
     def _listen(self) -> str:
         while not self._stop_requested.is_set():
@@ -92,24 +94,42 @@ class ClickSession(Thread):
             if message is None or self._stop_requested.is_set():
                 break
             kind, identifier = message
+            if kind == InputMessage.FOCUS_LOST or (
+                self._target_window is not None
+                and self._backend.foreground_window() != self._target_window
+            ):
+                return _FOCUS_LOST_NOTICE
             if kind == InputMessage.HOTKEY:
                 if identifier == _FAILSAFE_ID:
                     return "Failsafe pressed. Click Arm to enable the shortcuts again."
                 if identifier == _ACTIVATION_ID:
-                    self._toggle()
+                    if self._timer_id is not None:
+                        self._stop_clicking()
+                        self.updates.put(SessionUpdate(State.ARMED))
+                    elif notice := self._start_clicking():
+                        return notice
             elif kind == InputMessage.TIMER and identifier == self._timer_id:
                 self._backend.click()
         return ""
 
-    def _toggle(self) -> None:
-        if self._timer_id is None:
-            self._timer_id = self._backend.start_timer(self._settings.interval_ms)
-            self.updates.put(SessionUpdate(State.CLICKING))
-        else:
-            self._stop_timer()
-            self.updates.put(SessionUpdate(State.ARMED))
+    def _start_clicking(self) -> str:
+        target = self._backend.foreground_window()
+        if target is None:
+            return "Could not identify a foreground window."
+        self._backend.watch_foreground(target)
+        self._target_window = target
+        if self._backend.foreground_window() != target:
+            return _FOCUS_LOST_NOTICE
+        self._timer_id = self._backend.start_timer(self._settings.interval_ms)
+        self.updates.put(SessionUpdate(State.CLICKING))
+        return ""
 
-    def _stop_timer(self) -> None:
-        if self._timer_id is not None:
-            timer_id, self._timer_id = self._timer_id, None
-            self._backend.stop_timer(timer_id)
+    def _stop_clicking(self) -> None:
+        timer_id, self._timer_id = self._timer_id, None
+        target, self._target_window = self._target_window, None
+        try:
+            if timer_id is not None:
+                self._backend.stop_timer(timer_id)
+        finally:
+            if target is not None:
+                self._backend.unwatch_foreground()

@@ -19,9 +19,11 @@ The project uses Python 3.14 or newer with Tkinter.
    Press Esc on its own or click **Cancel** to keep the current shortcut.
    Both shortcuts must be different and available in Windows.
 2. Enter a whole interval from 10 to 2,147,483,647 milliseconds and click **Arm**.
-3. Move the pointer where you want to click. Press the activation shortcut to
-   start clicking. Press it again to pause. Shortcuts work while another app
-   is focused.
+3. Focus the window you want to use and move the pointer where you want to
+   click. Press the activation shortcut to start clicking. Press it again to
+   pause and stay armed. Each activation remembers the current foreground
+   window. Switching to another window during clicking, even within the same
+   application, stops clicking and disarms the autoclicker.
 4. Press the failsafe at any time while armed to stop and disarm. Click **Arm**
    again in the window to resume using the shortcuts.
 

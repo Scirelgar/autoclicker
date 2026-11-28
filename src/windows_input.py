@@ -1,8 +1,9 @@
-"""Win32 shortcuts, timer messages, and mouse input."""
+"""Win32 shortcuts, foreground events, timer messages, and mouse input."""
 
 import ctypes
 from ctypes import wintypes
 from enum import IntEnum
+from threading import get_native_id
 
 from settings import Hotkey
 
@@ -14,6 +15,8 @@ _LEFT_DOWN = 0x0002
 _LEFT_UP = 0x0004
 _ERROR_NOT_ENOUGH_QUOTA = 1816
 _WINDOWS_KEYS = (0x5B, 0x5C)  # VK_LWIN, VK_RWIN
+_EVENT_SYSTEM_FOREGROUND = 0x0003
+_WINEVENT_OUTOFCONTEXT = 0
 
 
 def windows_key_pressed() -> bool:
@@ -26,6 +29,7 @@ def windows_key_pressed() -> bool:
 class InputMessage(IntEnum):
     TIMER = 0x0113
     HOTKEY = 0x0312
+    FOCUS_LOST = _WM_STOP + 1
 
 
 class _Message(ctypes.Structure):
@@ -84,6 +88,29 @@ class WindowsInput:
             wintypes.WPARAM,
             wintypes.LPARAM,
         )
+        self._get_foreground = bind("GetForegroundWindow", hwnd)
+        self._win_event_proc = ctypes.WINFUNCTYPE(
+            None,
+            wintypes.HANDLE,
+            wintypes.DWORD,
+            hwnd,
+            wintypes.LONG,
+            wintypes.LONG,
+            wintypes.DWORD,
+            wintypes.DWORD,
+        )
+        self._set_win_event_hook = bind(
+            "SetWinEventHook",
+            wintypes.HANDLE,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.HMODULE,
+            self._win_event_proc,
+            wintypes.DWORD,
+            wintypes.DWORD,
+            wintypes.DWORD,
+        )
+        self._unhook_win_event = bind("UnhookWinEvent", boolean, wintypes.HANDLE)
         timer_id = ctypes.c_size_t
         self._set_timer = bind(
             "SetTimer", timer_id, hwnd, timer_id, uint, ctypes.c_void_p
@@ -92,6 +119,9 @@ class WindowsInput:
         self._send = bind("SendInput", uint, uint, ctypes.POINTER(_Input), ctypes.c_int)
 
         self._message = _Message()
+        self._focus_hook: int | None = None
+        self._focus_callback = None
+        self._focus_lost = False
         self._click = (_Input * 2)(
             _Input(mouse=_MouseInput(flags=_LEFT_DOWN)),
             _Input(mouse=_MouseInput(flags=_LEFT_UP)),
@@ -115,14 +145,56 @@ class WindowsInput:
 
     def next_message(self) -> tuple[int, int] | None:
         """Wait for a message, returning None when the worker should exit."""
-        result = self._get(ctypes.byref(self._message), None, 0, 0)
-        if result == -1:
-            raise ctypes.WinError(
-                ctypes.get_last_error(), "Windows input became unavailable."
-            )
-        if result == 0 or self._message.message == _WM_STOP:
-            return None
-        return self._message.message, self._message.wparam
+        while not self._focus_lost:
+            result = self._get(ctypes.byref(self._message), None, 0, 0)
+            if result == -1:
+                raise ctypes.WinError(
+                    ctypes.get_last_error(), "Windows input became unavailable."
+                )
+            kind = self._message.message
+            if result == 0 or kind == _WM_STOP:
+                return None
+            # The callback can latch a loss while GetMessage is waiting. Ignore
+            # wake messages left by a watch that has already been removed.
+            if not self._focus_lost and kind != InputMessage.FOCUS_LOST:
+                return kind, self._message.wparam
+        return InputMessage.FOCUS_LOST, 0
+
+    def foreground_window(self) -> int | None:
+        return self._get_foreground()
+
+    def watch_foreground(self, target: int) -> None:
+        """Watch the target on the worker's message loop until clicking stops."""
+        thread_id = get_native_id()
+        self._focus_lost = False
+
+        @self._win_event_proc
+        def on_foreground(_hook, _event, window, _object, _child, _thread, _time):
+            if window != target and not self._focus_lost:
+                self._focus_lost = True
+                # Wake our own queue. If it is full, existing messages suffice.
+                self._post(thread_id, InputMessage.FOCUS_LOST, 0, 0)
+
+        hook = self._set_win_event_hook(
+            _EVENT_SYSTEM_FOREGROUND,
+            _EVENT_SYSTEM_FOREGROUND,
+            None,
+            on_foreground,
+            0,
+            0,
+            _WINEVENT_OUTOFCONTEXT,
+        )
+        if not hook:
+            raise OSError("Could not start watching the target window.")
+        self._focus_hook = hook
+        self._focus_callback = on_foreground
+
+    def unwatch_foreground(self) -> None:
+        if not self._unhook_win_event(self._focus_hook):
+            raise OSError("Could not stop watching the target window.")
+        self._focus_hook = None
+        self._focus_callback = None
+        self._focus_lost = False
 
     def wake_for_stop(self, thread_id: int) -> None:
         if not self._post(thread_id, _WM_STOP, 0, 0):
